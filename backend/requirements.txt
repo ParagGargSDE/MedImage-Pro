@@ -8,3 +8,7 @@ pillow
 torch
 transformers
 opencv-python
+agno
+openai
+streamlit
+dotenv

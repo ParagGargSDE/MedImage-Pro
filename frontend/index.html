@@ -1,0 +1,1622 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MedImage Pro - Medical Imaging & Report Assistant</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'medical-blue': '#1e40af',
+                        'medical-light': '#f8fafc',
+                        'medical-gray': '#64748b',
+                        'medical-dark': '#1e293b',
+                        'medical-accent': '#3b82f6'
+                    },
+                    fontFamily: {
+                        'medical': ['Inter', 'system-ui', 'sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* Custom medical theme styles */
+        .medical-gradient {
+            background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+        }
+        
+        .annotation-tool {
+            transition: all 0.3s ease;
+        }
+        
+        .annotation-tool:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+        }
+        
+        .medical-card {
+            background: linear-gradient(145deg, #ffffff 0%, #f8fafc 100%);
+            border: 1px solid #e2e8f0;
+            transition: all 0.3s ease;
+        }
+        
+        .medical-card:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 8px 25px rgba(30, 64, 175, 0.1);
+        }
+        
+        .image-viewer {
+            background: #000;
+            position: relative;
+            overflow: hidden;
+            cursor: grab;
+        }
+        
+        .image-viewer:active {
+            cursor: grabbing;
+        }
+        
+        .annotation-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 10;
+        }
+        
+        .annotation-text {
+            position: absolute;
+            background: rgba(59, 130, 246, 0.9);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            pointer-events: auto;
+            cursor: pointer;
+        }
+        
+        .medical-sidebar {
+            transition: width 0.3s ease;
+        }
+        
+        .fade-in {
+            animation: fadeIn 0.5s ease-in;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .slide-in {
+            animation: slideIn 0.3s ease-out;
+        }
+        
+        @keyframes slideIn {
+            from { transform: translateX(-100%); }
+            to { transform: translateX(0); }
+        }
+        
+        .medical-tooltip {
+            position: relative;
+        }
+        
+        .medical-tooltip:hover::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #1e293b;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            white-space: nowrap;
+            z-index: 1000;
+            opacity: 1;
+            transition: opacity 0.3s;
+        }
+        
+        .rich-text-editor {
+            min-height: 200px;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 16px;
+            font-family: 'Inter', sans-serif;
+            line-height: 1.6;
+        }
+        
+        .rich-text-editor:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+        
+        .chat-message {
+            animation: messageSlide 0.3s ease-out;
+        }
+        
+        @keyframes messageSlide {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #10b981;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            z-index: 1000;
+            animation: notificationSlide 0.3s ease-out;
+        }
+        
+        @keyframes notificationSlide {
+            from { transform: translateX(100%); }
+            to { transform: translateX(0); }
+        }
+        
+        .medical-button {
+            background: linear-gradient(135deg, #3b82f6 0%, #1e40af 100%);
+            transition: all 0.3s ease;
+        }
+        
+        .medical-button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+        }
+        
+        .loading-spinner {
+            border: 3px solid #f3f4f6;
+            border-top: 3px solid #3b82f6;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useCallback, useRef } = React;
+
+        // Sample medical data
+        const SAMPLE_PATIENTS = [
+            {
+                id: 'P001',
+                name: 'John Smith',
+                age: 45,
+                gender: 'Male',
+                mrn: 'MRN123456',
+                dob: '1979-03-15',
+                history: 'Hypertension, Type 2 Diabetes',
+                allergies: 'Penicillin',
+                lastVisit: '2024-01-15',
+                status: 'Active',
+                studies: [
+                    { id: 'S001', type: 'Chest X-Ray', date: '2024-01-15', status: 'Complete' },
+                    { id: 'S002', type: 'CT Chest', date: '2024-01-10', status: 'Pending Review' }
+                ]
+            },
+            {
+                id: 'P002',
+                name: 'Sarah Johnson',
+                age: 32,
+                gender: 'Female',
+                mrn: 'MRN123457',
+                dob: '1992-07-22',
+                history: 'Asthma, Migraine',
+                allergies: 'None Known',
+                lastVisit: '2024-01-12',
+                status: 'Active',
+                studies: [
+                    { id: 'S003', type: 'Brain MRI', date: '2024-01-12', status: 'Complete' },
+                    { id: 'S004', type: 'Cervical Spine X-Ray', date: '2024-01-08', status: 'Complete' }
+                ]
+            },
+            {
+                id: 'P003',
+                name: 'Michael Brown',
+                age: 67,
+                gender: 'Male',
+                mrn: 'MRN123458',
+                dob: '1957-11-03',
+                history: 'COPD, Coronary Artery Disease',
+                allergies: 'Sulfa drugs',
+                lastVisit: '2024-01-14',
+                status: 'Active',
+                studies: [
+                    { id: 'S005', type: 'Cardiac CT', date: '2024-01-14', status: 'Complete' },
+                    { id: 'S006', type: 'Chest X-Ray', date: '2024-01-11', status: 'Complete' }
+                ]
+            }
+        ];
+
+        // Sample radiology images (placeholder data URLs)
+        const SAMPLE_IMAGES = {
+            'chest-xray': 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTAwIiBoZWlnaHQ9IjUwMCIgdmlld0JveD0iMCAwIDUwMCA1MDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSI1MDAiIGhlaWdodD0iNTAwIiBmaWxsPSIjMDAwIi8+CjxjaXJjbGUgY3g9IjI1MCIgY3k9IjI1MCIgcj0iMTAwIiBmaWxsPSJub25lIiBzdHJva2U9IiM2NjYiIHN0cm9rZS13aWR0aD0iMiIvPgo8dGV4dCB4PSIyNTAiIHk9IjI1MCIgZmlsbD0iIzk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZG9taW5hbnQtYmFzZWxpbmU9Im1pZGRsZSIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjE2Ij5DSEVTVCA8L3RleHQ+Cjx0ZXh0IHg9IjI1MCIgeT0iMjcwIiBmaWxsPSIjOTk5IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkb21pbmFudC1iYXNlbGluZT0ibWlkZGxlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTYiPlgtUkFZPC90ZXh0Pgo8L3N2Zz4=',
+            'brain-mri': 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTAwIiBoZWlnaHQ9IjUwMCIgdmlld0JveD0iMCAwIDUwMCA1MDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSI1MDAiIGhlaWdodD0iNTAwIiBmaWxsPSIjMDAwIi8+CjxlbGxpcHNlIGN4PSIyNTAiIGN5PSIyMDAiIHJ4PSIxMjAiIHJ5PSI5MCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjNjY2IiBzdHJva2Utd2lkdGg9IjMiLz4KPGV5bGlwc2UgY3g9IjI1MCIgY3k9IjIwMCIgcng9IjgwIiByeT0iNjAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzk5OSIgc3Ryb2tlLXdpZHRoPSIyIi8+Cjx0ZXh0IHg9IjI1MCIgeT0iMzUwIiBmaWxsPSIjOTk5IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkb21pbmFudC1iYXNlbGluZT0ibWlkZGxlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTYiPkJSQUlOIE1SSTwvdGV4dD4KPC9zdmc+',
+            'cardiac-ct': 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTAwIiBoZWlnaHQ9IjUwMCIgdmlld0JveD0iMCAwIDUwMCA1MDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSI1MDAiIGhlaWdodD0iNTAwIiBmaWxsPSIjMDAwIi8+CjxwYXRoIGQ9Ik0yNTAgMTUwQzI4MCA1MCAzNTAgMTAwIDMyMCAxODBDMzAwIDIyMCAyODAgMjQwIDI1MCAyODBDMjIwIDI0MCAyMDAgMjIwIDE4MCAxODBDMTUwIDEwMCAyMjAgNTAgMjUwIDE1MFoiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzk5OSIgc3Ryb2tlLXdpZHRoPSIzIi8+Cjx0ZXh0IHg9IjI1MCIgeT0iMzUwIiBmaWxsPSIjOTk5IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkb21pbmFudC1iYXNlbGluZT0ibWlkZGxlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTYiPkNBUkRJQUMgQ1Q8L3RleHQ+Cjwvc3ZnPg=='
+        };
+
+        // Authentication Context
+        const AuthContext = React.createContext();
+
+        // Main App Component
+        const App = () => {
+            const [currentUser, setCurrentUser] = useState(null);
+            const [currentView, setCurrentView] = useState('login');
+            const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+            const [selectedPatient, setSelectedPatient] = useState(null);
+            const [currentImage, setCurrentImage] = useState(null);
+            const [notifications, setNotifications] = useState([]);
+
+            const showNotification = useCallback((message, type = 'success') => {
+                const id = Date.now();
+                setNotifications(prev => [...prev, { id, message, type }]);
+                setTimeout(() => {
+                    setNotifications(prev => prev.filter(n => n.id !== id));
+                }, 3000);
+            }, []);
+
+            const handleLogin = (user) => {
+                setCurrentUser(user);
+                setCurrentView('dashboard');
+                showNotification(`Welcome back, ${user.name}!`);
+            };
+
+            const handleLogout = () => {
+                setCurrentUser(null);
+                setCurrentView('login');
+                setSelectedPatient(null);
+                setCurrentImage(null);
+                showNotification('Successfully logged out');
+            };
+
+            if (!currentUser) {
+                return (
+                    <AuthContext.Provider value={{ currentUser, handleLogin, handleLogout }}>
+                        <div className="min-h-screen bg-medical-light font-medical">
+                            <LoginPage />
+                            <NotificationContainer notifications={notifications} />
+                        </div>
+                    </AuthContext.Provider>
+                );
+            }
+
+            return (
+                <AuthContext.Provider value={{ currentUser, handleLogin, handleLogout }}>
+                    <div className="min-h-screen bg-medical-light font-medical flex">
+                        <Sidebar 
+                            collapsed={sidebarCollapsed}
+                            setCollapsed={setSidebarCollapsed}
+                            currentView={currentView}
+                            setCurrentView={setCurrentView}
+                        />
+                        
+                        <div className="flex-1 flex flex-col">
+                            <Header 
+                                sidebarCollapsed={sidebarCollapsed}
+                                setSidebarCollapsed={setSidebarCollapsed}
+                                currentView={currentView}
+                            />
+                            
+                            <main className="flex-1 p-6 overflow-auto">
+                                <MainContent 
+                                    currentView={currentView}
+                                    selectedPatient={selectedPatient}
+                                    setSelectedPatient={setSelectedPatient}
+                                    currentImage={currentImage}
+                                    setCurrentImage={setCurrentImage}
+                                    showNotification={showNotification}
+                                />
+                            </main>
+                        </div>
+                        
+                        <NotificationContainer notifications={notifications} />
+                    </div>
+                </AuthContext.Provider>
+            );
+        };
+
+        // Login Page Component
+        const LoginPage = () => {
+            const { handleLogin } = React.useContext(AuthContext);
+            const [isLoading, setIsLoading] = useState(false);
+
+            const handleOAuthLogin = (provider) => {
+                setIsLoading(true);
+                
+                // Simulate OAuth login
+                setTimeout(() => {
+                    const user = {
+                        id: '1',
+                        name: provider === 'google' ? 'Dr. Jane Smith' : 'Dr. John Doe',
+                        email: provider === 'google' ? 'jane.smith@hospital.com' : 'john.doe@hospital.com',
+                        role: 'instructor',
+                        provider: provider,
+                        avatar: `https://ui-avatars.com/api/?name=${provider === 'google' ? 'Jane+Smith' : 'John+Doe'}&background=3b82f6&color=fff`
+                    };
+                    setIsLoading(false);
+                    handleLogin(user);
+                }, 1500);
+            };
+
+            return (
+                <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-medical-blue to-medical-accent">
+                    <div className="max-w-md w-full mx-4">
+                        <div className="bg-white rounded-2xl shadow-2xl p-8 fade-in">
+                            <div className="text-center mb-8">
+                                <div className="medical-gradient w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                                    <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 8.172V5L8 4z" />
+                                    </svg>
+                                </div>
+                                <h1 className="text-3xl font-bold text-medical-dark mb-2">MedImage Pro</h1>
+                                <p className="text-medical-gray">Medical Imaging & Report Assistant</p>
+                            </div>
+
+                            <div className="space-y-4">
+                                <button
+                                    onClick={() => handleOAuthLogin('google')}
+                                    disabled={isLoading}
+                                    className="w-full bg-white border-2 border-gray-300 text-gray-700 py-3 px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors flex items-center justify-center space-x-3"
+                                >
+                                    {isLoading ? (
+                                        <div className="loading-spinner"></div>
+                                    ) : (
+                                        <>
+                                            <svg className="w-5 h-5" viewBox="0 0 24 24">
+                                                <path fill="#4285f4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                                                <path fill="#34a853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                                                <path fill="#fbbc05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                                                <path fill="#ea4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                                            </svg>
+                                            <span>Continue with Google</span>
+                                        </>
+                                    )}
+                                </button>
+
+                                <button
+                                    onClick={() => handleOAuthLogin('github')}
+                                    disabled={isLoading}
+                                    className="w-full bg-gray-900 text-white py-3 px-4 rounded-lg font-medium hover:bg-gray-800 transition-colors flex items-center justify-center space-x-3"
+                                >
+                                    {isLoading ? (
+                                        <div className="loading-spinner"></div>
+                                    ) : (
+                                        <>
+                                            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                                                <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                                            </svg>
+                                            <span>Continue with GitHub</span>
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+
+                            <div className="mt-8 text-center text-sm text-medical-gray">
+                                <p className="mb-2">🔒 Educational Use Only</p>
+                                <p>This application is designed for educational purposes and should not be used for actual medical diagnosis or treatment.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // Sidebar Component
+        const Sidebar = ({ collapsed, setCollapsed, currentView, setCurrentView }) => {
+            const { currentUser } = React.useContext(AuthContext);
+
+            const menuItems = [
+                { id: 'dashboard', label: 'Dashboard', icon: '📊' },
+                { id: 'patients', label: 'Patients', icon: '👥' },
+                { id: 'imaging', label: 'Imaging', icon: '🏥' },
+                { id: 'reports', label: 'Reports', icon: '📋' },
+                { id: 'collaboration', label: 'Collaborate', icon: '💬' },
+                { id: 'profile', label: 'Profile', icon: '👤' }
+            ];
+
+            if (currentUser?.role === 'admin') {
+                menuItems.push({ id: 'audit', label: 'Audit Logs', icon: '📝' });
+            }
+
+            return (
+                <div className={`medical-sidebar bg-white border-r border-gray-200 ${collapsed ? 'w-16' : 'w-64'} transition-all duration-300 ease-in-out`}>
+                    <div className="p-4 border-b border-gray-200">
+                        <div className="flex items-center space-x-3">
+                            <div className="medical-gradient w-10 h-10 rounded-lg flex items-center justify-center">
+                                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 8.172V5L8 4z" />
+                                </svg>
+                            </div>
+                            {!collapsed && (
+                                <div>
+                                    <h1 className="text-lg font-bold text-medical-dark">MedImage Pro</h1>
+                                    <p className="text-xs text-medical-gray">v2.1.0</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    <nav className="p-4 space-y-2">
+                        {menuItems.map(item => (
+                            <button
+                                key={item.id}
+                                onClick={() => setCurrentView(item.id)}
+                                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg transition-colors ${
+                                    currentView === item.id 
+                                        ? 'bg-medical-accent text-white' 
+                                        : 'text-medical-gray hover:bg-gray-100'
+                                }`}
+                                data-tooltip={collapsed ? item.label : ''}
+                            >
+                                <span className="text-lg">{item.icon}</span>
+                                {!collapsed && <span className="font-medium">{item.label}</span>}
+                            </button>
+                        ))}
+                    </nav>
+
+                    <div className="absolute bottom-4 left-4 right-4">
+                        <button
+                            onClick={() => setCollapsed(!collapsed)}
+                            className="w-full flex items-center justify-center p-2 text-medical-gray hover:bg-gray-100 rounded-lg transition-colors"
+                            data-tooltip={collapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
+                        >
+                            <svg className={`w-5 h-5 transition-transform ${collapsed ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            );
+        };
+
+        // Header Component
+        const Header = ({ sidebarCollapsed, setSidebarCollapsed, currentView }) => {
+            const { currentUser, handleLogout } = React.useContext(AuthContext);
+
+            const getViewTitle = () => {
+                const titles = {
+                    dashboard: 'Dashboard',
+                    patients: 'Patient Management',
+                    imaging: 'Medical Imaging',
+                    reports: 'Report Editor',
+                    collaboration: 'Collaboration Hub',
+                    profile: 'User Profile',
+                    audit: 'Audit Logs'
+                };
+                return titles[currentView] || 'Dashboard';
+            };
+
+            return (
+                <header className="bg-white border-b border-gray-200 px-6 py-4">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-4">
+                            <h1 className="text-xl font-semibold text-medical-dark">{getViewTitle()}</h1>
+                        </div>
+
+                        <div className="flex items-center space-x-4">
+                            <div className="flex items-center space-x-2">
+                                <img 
+                                    src={currentUser.avatar} 
+                                    alt={currentUser.name}
+                                    className="w-8 h-8 rounded-full"
+                                />
+                                <div className="hidden md:block">
+                                    <p className="text-sm font-medium text-medical-dark">{currentUser.name}</p>
+                                    <p className="text-xs text-medical-gray capitalize">{currentUser.role}</p>
+                                </div>
+                            </div>
+
+                            <button
+                                onClick={handleLogout}
+                                className="text-medical-gray hover:text-medical-dark transition-colors"
+                                data-tooltip="Logout"
+                            >
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                </header>
+            );
+        };
+
+        // Main Content Component
+        const MainContent = ({ currentView, selectedPatient, setSelectedPatient, currentImage, setCurrentImage, showNotification }) => {
+            const renderContent = () => {
+                switch (currentView) {
+                    case 'dashboard':
+                        return <Dashboard setSelectedPatient={setSelectedPatient} showNotification={showNotification} />;
+                    case 'patients':
+                        return <PatientManagement selectedPatient={selectedPatient} setSelectedPatient={setSelectedPatient} showNotification={showNotification} />;
+                    case 'imaging':
+                        return <ImagingViewer currentImage={currentImage} setCurrentImage={setCurrentImage} showNotification={showNotification} />;
+                    case 'reports':
+                        return <ReportEditor selectedPatient={selectedPatient} showNotification={showNotification} />;
+                    case 'collaboration':
+                        return <CollaborationHub showNotification={showNotification} />;
+                    case 'profile':
+                        return <UserProfile showNotification={showNotification} />;
+                    case 'audit':
+                        return <AuditLogs />;
+                    default:
+                        return <Dashboard setSelectedPatient={setSelectedPatient} showNotification={showNotification} />;
+                }
+            };
+
+            return (
+                <div className="fade-in">
+                    {renderContent()}
+                </div>
+            );
+        };
+
+        // Dashboard Component
+        const Dashboard = ({ setSelectedPatient, showNotification }) => {
+            const stats = [
+                { title: 'Total Patients', value: '1,234', change: '+12%', color: 'bg-blue-500' },
+                { title: 'Pending Reports', value: '45', change: '-8%', color: 'bg-orange-500' },
+                { title: 'Studies Today', value: '28', change: '+15%', color: 'bg-green-500' },
+                { title: 'Critical Cases', value: '3', change: '0%', color: 'bg-red-500' }
+            ];
+
+            return (
+                <div className="space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                        {stats.map((stat, index) => (
+                            <div key={index} className="medical-card p-6 rounded-xl">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-sm font-medium text-medical-gray">{stat.title}</p>
+                                        <p className="text-2xl font-bold text-medical-dark">{stat.value}</p>
+                                    </div>
+                                    <div className={`w-12 h-12 rounded-full ${stat.color} flex items-center justify-center`}>
+                                        <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                                        </svg>
+                                    </div>
+                                </div>
+                                <p className={`text-sm mt-2 ${stat.change.startsWith('+') ? 'text-green-600' : stat.change.startsWith('-') ? 'text-red-600' : 'text-gray-600'}`}>
+                                    {stat.change} from last week
+                                </p>
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div className="lg:col-span-2">
+                            <div className="medical-card p-6 rounded-xl">
+                                <h3 className="text-lg font-semibold text-medical-dark mb-4">Recent Patients</h3>
+                                <div className="space-y-3">
+                                    {SAMPLE_PATIENTS.map(patient => (
+                                        <div 
+                                            key={patient.id} 
+                                            className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+                                            onClick={() => {
+                                                setSelectedPatient(patient);
+                                                showNotification(`Selected patient: ${patient.name}`);
+                                            }}
+                                        >
+                                            <div className="flex items-center space-x-3">
+                                                <div className="w-10 h-10 bg-medical-accent rounded-full flex items-center justify-center text-white font-semibold">
+                                                    {patient.name.split(' ').map(n => n[0]).join('')}
+                                                </div>
+                                                <div>
+                                                    <p className="font-medium text-medical-dark">{patient.name}</p>
+                                                    <p className="text-sm text-medical-gray">{patient.mrn} • {patient.age}y {patient.gender}</p>
+                                                </div>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="text-sm font-medium text-medical-dark">{patient.status}</p>
+                                                <p className="text-xs text-medical-gray">{patient.lastVisit}</p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="space-y-6">
+                            <div className="medical-card p-6 rounded-xl">
+                                <h3 className="text-lg font-semibold text-medical-dark mb-4">Quick Actions</h3>
+                                <div className="space-y-3">
+                                    <button className="w-full medical-button text-white py-2 px-4 rounded-lg font-medium">
+                                        New Patient
+                                    </button>
+                                    <button className="w-full border border-medical-accent text-medical-accent py-2 px-4 rounded-lg font-medium hover:bg-medical-accent hover:text-white transition-colors">
+                                        Generate Report
+                                    </button>
+                                    <button className="w-full border border-gray-300 text-gray-700 py-2 px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors">
+                                        View Analytics
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="medical-card p-6 rounded-xl">
+                                <h3 className="text-lg font-semibold text-medical-dark mb-4">System Status</h3>
+                                <div className="space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-sm text-medical-gray">DICOM Server</span>
+                                        <span className="text-sm text-green-600 font-medium">Online</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-sm text-medical-gray">AI Processing</span>
+                                        <span className="text-sm text-green-600 font-medium">Active</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-sm text-medical-gray">Database</span>
+                                        <span className="text-sm text-green-600 font-medium">Connected</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // Patient Management Component
+        const PatientManagement = ({ selectedPatient, setSelectedPatient, showNotification }) => {
+            const [searchTerm, setSearchTerm] = useState('');
+            const [filterStatus, setFilterStatus] = useState('all');
+
+            const filteredPatients = SAMPLE_PATIENTS.filter(patient => {
+                const matchesSearch = patient.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                    patient.mrn.toLowerCase().includes(searchTerm.toLowerCase());
+                const matchesStatus = filterStatus === 'all' || patient.status.toLowerCase() === filterStatus.toLowerCase();
+                return matchesSearch && matchesStatus;
+            });
+
+            return (
+                <div className="space-y-6">
+                    <div className="flex flex-col sm:flex-row gap-4">
+                        <div className="flex-1">
+                            <input
+                                type="text"
+                                placeholder="Search patients by name or MRN..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-medical-accent focus:border-transparent"
+                            />
+                        </div>
+                        <select
+                            value={filterStatus}
+                            onChange={(e) => setFilterStatus(e.target.value)}
+                            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-medical-accent focus:border-transparent"
+                        >
+                            <option value="all">All Status</option>
+                            <option value="active">Active</option>
+                            <option value="inactive">Inactive</option>
+                        </select>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div className="lg:col-span-2">
+                            <div className="medical-card rounded-xl overflow-hidden">
+                                <div className="p-6 border-b border-gray-200">
+                                    <h3 className="text-lg font-semibold text-medical-dark">Patient List</h3>
+                                </div>
+                                <div className="divide-y divide-gray-200">
+                                    {filteredPatients.map(patient => (
+                                        <div 
+                                            key={patient.id}
+                                            className={`p-6 hover:bg-gray-50 transition-colors cursor-pointer ${
+                                                selectedPatient?.id === patient.id ? 'bg-blue-50 border-l-4 border-medical-accent' : ''
+                                            }`}
+                                            onClick={() => {
+                                                setSelectedPatient(patient);
+                                                showNotification(`Selected patient: ${patient.name}`);
+                                            }}
+                                        >
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center space-x-4">
+                                                    <div className="w-12 h-12 bg-medical-accent rounded-full flex items-center justify-center text-white font-semibold">
+                                                        {patient.name.split(' ').map(n => n[0]).join('')}
+                                                    </div>
+                                                    <div>
+                                                        <h4 className="font-semibold text-medical-dark">{patient.name}</h4>
+                                                        <p className="text-sm text-medical-gray">{patient.mrn}</p>
+                                                        <p className="text-sm text-medical-gray">{patient.age}y {patient.gender} • DOB: {patient.dob}</p>
+                                                    </div>
+                                                </div>
+                                                <div className="text-right">
+                                                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                                        patient.status === 'Active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                                                    }`}>
+                                                        {patient.status}
+                                                    </span>
+                                                    <p className="text-xs text-medical-gray mt-1">Last: {patient.lastVisit}</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="space-y-6">
+                            {selectedPatient ? (
+                                <div className="medical-card p-6 rounded-xl">
+                                    <h3 className="text-lg font-semibold text-medical-dark mb-4">Patient Details</h3>
+                                    <div className="space-y-4">
+                                        <div>
+                                            <p className="text-sm font-medium text-medical-gray">Medical Record Number</p>
+                                            <p className="text-medical-dark">{selectedPatient.mrn}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-sm font-medium text-medical-gray">Medical History</p>
+                                            <p className="text-medical-dark">{selectedPatient.history}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-sm font-medium text-medical-gray">Allergies</p>
+                                            <p className="text-medical-dark">{selectedPatient.allergies}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-sm font-medium text-medical-gray">Recent Studies</p>
+                                            <div className="space-y-2 mt-2">
+                                                {selectedPatient.studies.map(study => (
+                                                    <div key={study.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                                                        <div>
+                                                            <p className="text-sm font-medium text-medical-dark">{study.type}</p>
+                                                            <p className="text-xs text-medical-gray">{study.date}</p>
+                                                        </div>
+                                                        <span className={`px-2 py-1 rounded text-xs font-medium ${
+                                                            study.status === 'Complete' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                                                        }`}>
+                                                            {study.status}
+                                                        </span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="medical-card p-6 rounded-xl text-center">
+                                    <div className="text-gray-400 mb-4">
+                                        <svg className="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                                        </svg>
+                                    </div>
+                                    <p className="text-medical-gray">Select a patient to view details</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // Imaging Viewer Component
+        const ImagingViewer = ({ currentImage, setCurrentImage, showNotification }) => {
+            const [selectedTool, setSelectedTool] = useState('select');
+            const [zoom, setZoom] = useState(1);
+            const [annotations, setAnnotations] = useState([]);
+            const [annotationHistory, setAnnotationHistory] = useState([]);
+            const canvasRef = useRef(null);
+
+            const tools = [
+                { id: 'select', name: 'Select', icon: '🖱️' },
+                { id: 'text', name: 'Text', icon: '📝' },
+                { id: 'rectangle', name: 'Rectangle', icon: '⬜' },
+                { id: 'circle', name: 'Circle', icon: '⭕' },
+                { id: 'arrow', name: 'Arrow', icon: '➡️' }
+            ];
+
+            const handleImageLoad = (imageKey) => {
+                setCurrentImage(imageKey);
+                showNotification(`Loaded ${imageKey.replace('-', ' ').toUpperCase()}`);
+            };
+
+            const handleCanvasClick = (event) => {
+                if (selectedTool === 'text') {
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    const x = event.clientX - rect.left;
+                    const y = event.clientY - rect.top;
+                    
+                    const text = prompt('Enter annotation text:');
+                    if (text) {
+                        const newAnnotation = {
+                            id: Date.now(),
+                            type: 'text',
+                            x,
+                            y,
+                            text,
+                            timestamp: new Date().toISOString()
+                        };
+                        
+                        setAnnotations(prev => [...prev, newAnnotation]);
+                        setAnnotationHistory(prev => [...prev, newAnnotation]);
+                        showNotification('Annotation added');
+                    }
+                }
+            };
+
+            const handleUndo = () => {
+                if (annotations.length > 0) {
+                    setAnnotations(prev => prev.slice(0, -1));
+                    showNotification('Annotation undone');
+                }
+            };
+
+            const handleZoomIn = () => {
+                setZoom(prev => Math.min(prev + 0.25, 3));
+            };
+
+            const handleZoomOut = () => {
+                setZoom(prev => Math.max(prev - 0.25, 0.25));
+            };
+
+            const handleResetView = () => {
+                setZoom(1);
+                setAnnotations([]);
+                showNotification('View reset');
+            };
+
+            return (
+                <div className="space-y-6">
+                    <div className="flex flex-wrap gap-4 items-center">
+                        <div className="flex items-center space-x-2">
+                            <span className="text-sm font-medium text-medical-gray">Load Image:</span>
+                            {Object.keys(SAMPLE_IMAGES).map(imageKey => (
+                                <button
+                                    key={imageKey}
+                                    onClick={() => handleImageLoad(imageKey)}
+                                    className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
+                                        currentImage === imageKey
+                                            ? 'bg-medical-accent text-white'
+                                            : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                    }`}
+                                >
+                                    {imageKey.replace('-', ' ').toUpperCase()}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                        <div className="lg:col-span-3">
+                            <div className="medical-card p-6 rounded-xl">
+                                <div className="flex items-center justify-between mb-4">
+                                    <h3 className="text-lg font-semibold text-medical-dark">Image Viewer</h3>
+                                    <div className="flex items-center space-x-2">
+                                        <button
+                                            onClick={handleZoomOut}
+                                            className="p-2 bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors"
+                                            data-tooltip="Zoom Out"
+                                        >
+                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
+                                            </svg>
+                                        </button>
+                                        <span className="text-sm font-medium text-medical-gray min-w-16 text-center">
+                                            {Math.round(zoom * 100)}%
+                                        </span>
+                                        <button
+                                            onClick={handleZoomIn}
+                                            className="p-2 bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors"
+                                            data-tooltip="Zoom In"
+                                        >
+                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                                            </svg>
+                                        </button>
+                                        <button
+                                            onClick={handleResetView}
+                                            className="p-2 bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors"
+                                            data-tooltip="Reset View"
+                                        >
+                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="image-viewer rounded-lg h-96 flex items-center justify-center relative">
+                                    {currentImage ? (
+                                        <div className="relative">
+                                            <img
+                                                src={SAMPLE_IMAGES[currentImage]}
+                                                alt="Medical Image"
+                                                className="max-w-full max-h-full object-contain"
+                                                style={{ transform: `scale(${zoom})` }}
+                                                onClick={handleCanvasClick}
+                                            />
+                                            <div className="annotation-overlay">
+                                                {annotations.map(annotation => (
+                                                    <div
+                                                        key={annotation.id}
+                                                        className="annotation-text"
+                                                        style={{
+                                                            left: annotation.x,
+                                                            top: annotation.y,
+                                                            transform: `scale(${zoom})`
+                                                        }}
+                                                    >
+                                                        {annotation.text}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="text-center">
+                                            <svg className="w-16 h-16 mx-auto text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                            </svg>
+                                            <p className="text-gray-400">Select an image to view</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="space-y-6">
+                            <div className="medical-card p-6 rounded-xl">
+                                <h3 className="text-lg font-semibold text-medical-dark mb-4">Annotation Tools</h3>
+                                <div className="space-y-2">
+                                    {tools.map(tool => (
+                                        <button
+                                            key={tool.id}
+                                            onClick={() => setSelectedTool(tool.id)}
+                                            className={`w-full annotation-tool flex items-center space-x-3 px-3 py-2 rounded-lg font-medium transition-colors ${
+                                                selectedTool === tool.id
+                                                    ? 'bg-medical-accent text-white'
+                                                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                            }`}
+                                        >
+                                            <span>{tool.icon}</span>
+                                            <span>{tool.name}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                                
+                                <div className="mt-4 pt-4 border-t border-gray-200">
+                                    <button
+                                        onClick={handleUndo}
+                                        disabled={annotations.length === 0}
+                                        className="w-full px-3 py-2 bg-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        Undo Last Annotation
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="medical-card p-6 rounded-xl">
+                                <h3 className="text-lg font-semibold text-medical-dark mb-4">Image Controls</h3>
+                                <div className="space-y-3">
+                                    <div>
+                                        <label className="block text-sm font-medium text-medical-gray mb-2">Brightness</label>
+                                        <input
+                                            type="range"
+                                            min="0.5"
+                                            max="2"
+                                            step="0.1"
+                                            defaultValue="1"
+                                            className="w-full"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-medical-gray mb-2">Contrast</label>
+                                        <input
+                                            type="range"
+                                            min="0.5"
+                                            max="2"
+                                            step="0.1"
+                                            defaultValue="1"
+                                            className="w-full"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {annotations.length > 0 && (
+                                <div className="medical-card p-6 rounded-xl">
+                                    <h3 className="text-lg font-semibold text-medical-dark mb-4">Annotations</h3>
+                                    <div className="space-y-2 max-h-32 overflow-y-auto">
+                                        {annotations.map((annotation, index) => (
+                                            <div key={annotation.id} className="p-2 bg-gray-50 rounded text-sm">
+                                                <p className="font-medium">{annotation.text}</p>
+                                                <p className="text-xs text-gray-500">#{index + 1}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // Report Editor Component
+        const ReportEditor = ({ selectedPatient, showNotification }) => {
+            const [reportData, setReportData] = useState({
+                findings: '',
+                diagnosis: '',
+                recommendations: '',
+                impression: '',
+                technique: '',
+                comparison: ''
+            });
+
+            const [isGenerating, setIsGenerating] = useState(false);
+
+            const handleGenerateReport = () => {
+                setIsGenerating(true);
+                
+                // Simulate AI report generation
+                setTimeout(() => {
+                    setReportData({
+                        findings: 'The chest X-ray demonstrates clear lung fields bilaterally with no evidence of consolidation, pleural effusion, or pneumothorax. The cardiac silhouette appears normal in size and configuration. No acute osseous abnormalities are identified.',
+                        diagnosis: 'Normal chest X-ray examination',
+                        recommendations: '1. No immediate follow-up required\n2. Routine care as clinically indicated\n3. Return if symptoms develop',
+                        impression: 'Normal chest radiograph. No acute cardiopulmonary abnormalities detected.',
+                        technique: 'Single frontal chest radiograph obtained in the upright position',
+                        comparison: 'No prior studies available for comparison'
+                    });
+                    setIsGenerating(false);
+                    showNotification('AI report generated successfully');
+                }, 2000);
+            };
+
+            const handleSaveReport = () => {
+                showNotification('Report saved successfully');
+            };
+
+            const handleDownloadPDF = () => {
+                showNotification('PDF download started');
+            };
+
+            const handleShare = () => {
+                showNotification('Report shared with team');
+            };
+
+            return (
+                <div className="space-y-6">
+                    <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+                        <div>
+                            <h2 className="text-2xl font-bold text-medical-dark">Report Editor</h2>
+                            {selectedPatient && (
+                                <p className="text-medical-gray">Patient: {selectedPatient.name} ({selectedPatient.mrn})</p>
+                            )}
+                        </div>
+                        <div className="flex gap-2">
+                            <button
+                                onClick={handleGenerateReport}
+                                disabled={isGenerating}
+                                className="medical-button text-white px-4 py-2 rounded-lg font-medium flex items-center space-x-2"
+                            >
+                                {isGenerating ? (
+                                    <>
+                                        <div className="loading-spinner"></div>
+                                        <span>Generating...</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                                        </svg>
+                                        <span>Generate with AI</span>
+                                    </>
+                                )}
+                            </button>
+                            <button
+                                onClick={handleSaveReport}
+                                className="border border-medical-accent text-medical-accent px-4 py-2 rounded-lg font-medium hover:bg-medical-accent hover:text-white transition-colors"
+                            >
+                                Save Draft
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div className="space-y-6">
+                            <div className="medical-card p-6 rounded-xl">
+                                <h3 className="text-lg font-semibold text-medical-dark mb-4">Technique</h3>
+                                <textarea
+                                    value={reportData.technique}
+                                    onChange={(e) => setReportData(prev => ({ ...prev, technique: e.target.value }))}
+                                    placeholder="Describe the imaging technique used..."
+                                    className="rich-text-editor w-full resize-none"
+                                    rows={3}
+                                />
+                            </div>
+
+                            <div className="medical-card p-6 rounded-xl">
+                                <h3 className="text-lg font-semibold text-medical-dark mb-4">Comparison</h3>
+                                <textarea
+                                    value={reportData.comparison}
+                                    onChange={(e) => setReportData(prev => ({ ...prev, comparison: e.target.value }))}
+                                    placeholder="Compare with previous studies..."
+                                    className="rich-text-editor w-full resize-none"
+                                    rows={3}
+                                />
+                            </div>
+
+                            <div className="medical-card p-6 rounded-xl">
+                                <h3 className="text-lg font-semibold text-medical-dark mb-4">Findings</h3>
+                                <textarea
+                                    value={reportData.findings}
+                                    onChange={(e) => setReportData(prev => ({ ...prev, findings: e.target.value }))}
+                                    placeholder="Describe the radiological findings..."
+                                    className="rich-text-editor w-full resize-none"
+                                    rows={6}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="space-y-6">
+                            <div className="medical-card p-6 rounded-xl">
+                                <h3 className="text-lg font-semibold text-medical-dark mb-4">Impression</h3>
+                                <textarea
+                                    value={reportData.impression}
+                                    onChange={(e) => setReportData(prev => ({ ...prev, impression: e.target.value }))}
+                                    placeholder="Provide clinical impression..."
+                                    className="rich-text-editor w-full resize-none"
+                                    rows={4}
+                                />
+                            </div>
+
+                            <div className="medical-card p-6 rounded-xl">
+                                <h3 className="text-lg font-semibold text-medical-dark mb-4">Diagnosis</h3>
+                                <textarea
+                                    value={reportData.diagnosis}
+                                    onChange={(e) => setReportData(prev => ({ ...prev, diagnosis: e.target.value }))}
+                                    placeholder="State the diagnosis..."
+                                    className="rich-text-editor w-full resize-none"
+                                    rows={3}
+                                />
+                            </div>
+
+                            <div className="medical-card p-6 rounded-xl">
+                                <h3 className="text-lg font-semibold text-medical-dark mb-4">Recommendations</h3>
+                                <textarea
+                                    value={reportData.recommendations}
+                                    onChange={(e) => setReportData(prev => ({ ...prev, recommendations: e.target.value }))}
+                                    placeholder="Provide recommendations..."
+                                    className="rich-text-editor w-full resize-none"
+                                    rows={4}
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="flex gap-4 justify-end">
+                        <button
+                            onClick={handleDownloadPDF}
+                            className="flex items-center space-x-2 bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-medium hover:bg-gray-300 transition-colors"
+                        >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                            <span>Download PDF</span>
+                        </button>
+                        <button
+                            onClick={handleShare}
+                            className="flex items-center space-x-2 bg-green-500 text-white px-4 py-2 rounded-lg font-medium hover:bg-green-600 transition-colors"
+                        >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z" />
+                            </svg>
+                            <span>Share Report</span>
+                        </button>
+                    </div>
+                </div>
+            );
+        };
+
+        // Collaboration Hub Component
+        const CollaborationHub = ({ showNotification }) => {
+            const [messages, setMessages] = useState([
+                { id: 1, user: 'Dr. Smith', avatar: 'https://ui-avatars.com/api/?name=Dr+Smith&background=3b82f6&color=fff', message: 'This chest X-ray shows clear lung fields. What are your thoughts on the cardiac silhouette?', time: '10:30 AM', type: 'message' },
+                { id: 2, user: 'Dr. Johnson', avatar: 'https://ui-avatars.com/api/?name=Dr+Johnson&background=10b981&color=fff', message: 'I agree. The cardiac silhouette appears normal. No signs of cardiomegaly.', time: '10:32 AM', type: 'message' },
+                { id: 3, user: 'System', avatar: '', message: 'Dr. Brown joined the case review', time: '10:35 AM', type: 'system' }
+            ]);
+
+            const [newMessage, setNewMessage] = useState('');
+            const [activeUsers] = useState([
+                { name: 'Dr. Smith', status: 'online', avatar: 'https://ui-avatars.com/api/?name=Dr+Smith&background=3b82f6&color=fff' },
+                { name: 'Dr. Johnson', status: 'online', avatar: 'https://ui-avatars.com/api/?name=Dr+Johnson&background=10b981&color=fff' },
+                { name: 'Dr. Brown', status: 'away', avatar: 'https://ui-avatars.com/api/?name=Dr+Brown&background=f59e0b&color=fff' }
+            ]);
+
+            const handleSendMessage = () => {
+                if (newMessage.trim()) {
+                    const message = {
+                        id: Date.now(),
+                        user: 'You',
+                        avatar: 'https://ui-avatars.com/api/?name=You&background=6366f1&color=fff',
+                        message: newMessage,
+                        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                        type: 'message'
+                    };
+                    setMessages(prev => [...prev, message]);
+                    setNewMessage('');
+                    showNotification('Message sent');
+                }
+            };
+
+            const handleKeyPress = (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSendMessage();
+                }
+            };
+
+            return (
+                <div className="space-y-6">
+                    <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                        <div className="lg:col-span-3">
+                            <div className="medical-card rounded-xl overflow-hidden">
+                                <div className="p-6 border-b border-gray-200">
+                                    <h3 className="text-lg font-semibold text-medical-dark">Case Discussion</h3>
+                                    <p className="text-sm text-medical-gray">Patient: John Smith (MRN123456) - Chest X-Ray Review</p>
+                                </div>
+                                
+                                <div className="h-96 overflow-y-auto p-6 space-y-4">
+                                    {messages.map(message => (
+                                        <div key={message.id} className={`chat-message ${message.type === 'system' ? 'text-center' : 'flex space-x-3'}`}>
+                                            {message.type === 'system' ? (
+                                                <p className="text-sm text-medical-gray italic">{message.message}</p>
+                                            ) : (
+                                                <>
+                                                    <img src={message.avatar} alt={message.user} className="w-8 h-8 rounded-full" />
+                                                    <div className="flex-1">
+                                                        <div className="flex items-center space-x-2">
+                                                            <p className="font-medium text-medical-dark">{message.user}</p>
+                                                            <p className="text-xs text-medical-gray">{message.time}</p>
+                                                        </div>
+                                                        <p className="text-medical-dark mt-1">{message.message}</p>
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                                
+                                <div className="p-6 border-t border-gray-200">
+                                    <div className="flex space-x-3">
+                                        <input
+                                            type="text"
+                                            value={newMessage}
+                                            onChange={(e) => setNewMessage(e.target.value)}
+                                            onKeyPress={handleKeyPress}
+                                            placeholder="Type your message..."
+                                            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-medical-accent focus:border-transparent"
+                                        />
+                                        <button
+                                            onClick={handleSendMessage}
+                                            className="medical-button text-white px-6 py-2 rounded-lg font-medium"
+                                        >
+                                            Send
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="space-y-6">
+                            <div className="medical-card p-6 rounded-xl">
+                                <h3 className="text-lg font-semibold text-medical-dark mb-4">Active Users</h3>
+                                <div className="space-y-3">
+                                    {activeUsers.map(user => (
+                                        <div key={user.name} className="flex items-center space-x-3">
+                                            <div className="relative">
+                                                <img src={user.avatar} alt={user.name} className="w-8 h-8 rounded-full" />
+                                                <div className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white ${
+                                                    user.status === 'online' ? 'bg-green-500' : 'bg-yellow-500'
+                                                }`}></div>
+                                            </div>
+                                            <div>
+                                                <p className="font-medium text-medical-dark">{user.name}</p>
+                                                <p className="text-xs text-medical-gray capitalize">{user.status}</p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="medical-card p-6 rounded-xl">
+                                <h3 className="text-lg font-semibold text-medical-dark mb-4">Case Actions</h3>
+                                <div className="space-y-3">
+                                    <button className="w-full medical-button text-white py-2 px-4 rounded-lg font-medium">
+                                        Start Video Call
+                                    </button>
+                                    <button className="w-full border border-medical-accent text-medical-accent py-2 px-4 rounded-lg font-medium hover:bg-medical-accent hover:text-white transition-colors">
+                                        Share Screen
+                                    </button>
+                                    <button className="w-full border border-gray-300 text-gray-700 py-2 px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors">
+                                        Export Chat
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="medical-card p-6 rounded-xl">
+                                <h3 className="text-lg font-semibold text-medical-dark mb-4">Notifications</h3>
+                                <div className="space-y-2">
+                                    <div className="p-3 bg-blue-50 rounded-lg">
+                                        <p className="text-sm font-medium text-blue-900">New case assigned</p>
+                                        <p className="text-xs text-blue-700">5 minutes ago</p>
+                                    </div>
+                                    <div className="p-3 bg-green-50 rounded-lg">
+                                        <p className="text-sm font-medium text-green-900">Report approved</p>
+                                        <p className="text-xs text-green-700">15 minutes ago</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // User Profile Component
+        const UserProfile = ({ showNotification }) => {
+            const { currentUser } = React.useContext(AuthContext);
+            const [profileData, setProfileData] = useState({
+                name: currentUser?.name || '',
+                email: currentUser?.email || '',
+                role: currentUser?.role || '',
+                department: 'Radiology',
+                phone: '+1 (555) 123-4567',
+                license: 'MD-12345',
+                specialization: 'Diagnostic Radiology'
+            });
+
+            const handleSave = () => {
+                showNotification('Profile updated successfully');
+            };
+
+            return (
+                <div className="space-y-6">
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div className="lg:col-span-2">
+                            <div className="medical-card p-6 rounded-xl">
+                                <h3 className="text-lg font-semibold text-medical-dark mb-6">Profile Information</h3>
+                                
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div>
+                                        <label className="block text-sm font-medium text-medical-gray mb-2">Full Name</label>
+                                        <input
+                                            type="text"
+                                            value={profileData.name}
+                                            onChange={(e) => setProfileData(prev => ({ ...prev, name: e.target.value }))}
+                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-medical-accent focus:border-transparent"
+                                        />
+                                    </div>
+                                    
+                                    <div>
+                                        <label className="block text-sm font-medium text-medical-gray mb-2">Email</label>
+                                        <input
+                                            type="email"
+                                            value={profileData.email}
+                                            onChange={(e) => setProfileData(prev => ({ ...prev, email: e.target.value }))}
+                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-medical-accent focus:border-transparent"
+                                        />
+                                    </div>
+                                    
+                                    <div>
+                                        <label className="block text-sm font-medium text-medical-gray mb-2">Role</label>
+                                        <select
+                                            value={profileData.role}
+                                            onChange={(e) => setProfileData(prev => ({ ...prev, role: e.target.value }))}
+                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-medical-accent focus:border-transparent"
+                                        >
+                                            <option value="student">Student</option>
+                                            <option value="instructor">Instructor</option>
+                                            <option value="admin">Admin</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <div>
+                                        <label className="block text-sm font-medium text-medical-gray mb-2">Department</label>
+                                        <input
+                                            type="text"
+                                            value={profileData.department}
+                                            onChange={(e) => setProfileData(prev => ({ ...prev, department: e.target.value }))}
+                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-medical-accent focus:border-transparent"
+                                        />
+                                    </div>
+                                    
+                                    <div>
+                                        <label className="block text-sm font-medium text-medical-gray mb-2">Phone</label>
+                                        <input
+                                            type="tel"
+                                            value={profileData.phone}
+                                            onChange={(e) => setProfileData(prev => ({ ...prev, phone: e.target.value }))}
+                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-medical-accent focus:border-transparent"
+                                        />
+                                    </div>
+                                    
+                                    <div>
+                                        <label className="block text-sm font-medium text-medical-gray mb-2">License Number</label>
+                                        <input
+                                            type="text"
+                                            value={profileData.license}
+                                            onChange={(e) => setProfileData(prev => ({ ...prev, license: e.target.value }))}
+                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-medical-accent focus:border-transparent"
+                                        />
+                                    </div>
+                                    
+                                    <div className="md:col-span-2">
+                                        <label className="block text-sm font-medium text-medical-gray mb-2">Specialization</label>
+                                        <input
+                                            type="text"
+                                            value={profileData.specialization}
+                                            onChange={(e) => setProfileData(prev => ({ ...prev, specialization: e.target.value }))}
+                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-medical-accent focus:border-transparent"
+                                        />
+                                    </div>
+                                </div>
+                                
+                                <div className="mt-6 flex justify-end">
+                                    <button
+                                        onClick={handleSave}
+                                        className="medical-button text-white px-6 py-2 rounded-lg font-medium"
+                                    >
+                                        Save Changes
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="space-y-6">
+                            <div className="medical-card p-6 rounded-xl text-center">
+                                <img 
+                                    src={currentUser?.avatar} 
+                                    alt={currentUser?.name}
+                                    className="w-24 h-24 rounded-full mx-auto mb-4"
+                                />
+                                <h3 className="text-lg font-semibold text-medical-dark">{currentUser?.name}</h3>
+                                <p className="text-medical-gray capitalize">{currentUser?.role}</p>
+                                <button className="mt-4 text-medical-accent hover:underline">
+                                    Change Avatar
+                                </button>
+                            </div>
+
+                            <div className="medical-card p-6 rounded-xl">
+                                <h3 className="text-lg font-semibold text-medical-dark mb-4">Account Settings</h3>
+                                <div className="space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-medical-gray">Email Notifications</span>
+                                        <input type="checkbox" defaultChecked className="rounded" />
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-medical-gray">Push Notifications</span>
+                                        <input type="checkbox" defaultChecked className="rounded" />
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-medical-gray">Two-Factor Auth</span>
+                                        <input type="checkbox" className="rounded" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="medical-card p-6 rounded-xl">
+                                <h3 className="text-lg font-semibold text-medical-dark mb-4">Recent Activity</h3>
+                                <div className="space-y-3">
+                                    <div className="text-sm">
+                                        <p className="font-medium text-medical-dark">Report Generated</p>
+                                        <p className="text-medical-gray">2 hours ago</p>
+                                    </div>
+                                    <div className="text-sm">
+                                        <p className="font-medium text-medical-dark">Case Review</p>
+                                        <p className="text-medical-gray">4 hours ago</p>
+                                    </div>
+                                    <div className="text-sm">
+                                        <p className="font-medium text-medical-dark">Profile Updated</p>
+                                        <p className="text-medical-gray">1 day ago</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // Audit Logs Component
+        const AuditLogs = () => {
+            const auditLogs = [
+                { id: 1, user: 'Dr. Smith', action: 'Accessed patient record', patient: 'John Smith (MRN123456)', timestamp: '2024-01-15 10:30:00', ip: '192.168.1.100' },
+                { id: 2, user: 'Dr. Johnson', action: 'Generated report', patient: 'Sarah Johnson (MRN123457)', timestamp: '2024-01-15 10:15:00', ip: '192.168.1.101' },
+                { id: 3, user: 'Dr. Brown', action: 'Modified annotation', patient: 'Michael Brown (MRN123458)', timestamp: '2024-01-15 09:45:00', ip: '192.168.1.102' },
+                { id: 4, user: 'Admin', action: 'User login', patient: 'N/A', timestamp: '2024-01-15 09:30:00', ip: '192.168.1.103' }
+            ];
+
+            return (
+                <div className="space-y-6">
+                    <div className="flex items-center justify-between">
+                        <h2 className="text-2xl font-bold text-medical-dark">Audit Logs</h2>
+                        <div className="flex gap-2">
+                            <input
+                                type="date"
+                                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-medical-accent focus:border-transparent"
+                            />
+                            <select className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-medical-accent focus:border-transparent">
+                                <option>All Actions</option>
+                                <option>Login</option>
+                                <option>Patient Access</option>
+                                <option>Report Generation</option>
+                                <option>Data Modification</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="medical-card rounded-xl overflow-hidden">
+                        <div className="overflow-x-auto">
+                            <table className="w-full">
+                                <thead className="bg-gray-50">
+                                    <tr>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-medical-gray uppercase tracking-wider">Timestamp</th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-medical-gray uppercase tracking-wider">User</th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-medical-gray uppercase tracking-wider">Action</th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-medical-gray uppercase tracking-wider">Patient</th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-medical-gray uppercase tracking-wider">IP Address</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="bg-white divide-y divide-gray-200">
+                                    {auditLogs.map(log => (
+                                        <tr key={log.id} className="hover:bg-gray-50">
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-medical-dark">{log.timestamp}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-medical-dark">{log.user}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-medical-dark">{log.action}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-medical-gray">{log.patient}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-medical-gray">{log.ip}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // Notification Container Component
+        const NotificationContainer = ({ notifications }) => {
+            return (
+                <div className="fixed top-4 right-4 space-y-2 z-50">
+                    {notifications.map(notification => (
+                        <div
+                            key={notification.id}
+                            className={`notification ${notification.type === 'error' ? 'bg-red-500' : 'bg-green-500'}`}
+                        >
+                            {notification.message}
+                        </div>
+                    ))}
+                </div>
+            );
+        };
+
+        // Render the app
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>
